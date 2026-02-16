@@ -1,0 +1,9 @@
+{
+  "appId": "io.ionic.starter",
+  "appName": "PackingApp",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

@@ -1,0 +1,23 @@
+# secrets
+.env
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# android build
+android/
+
+# ide
+.idea/
+.run/
+
+# git
+.git
+
+# debug / test
+debug_*.js
+test-*.js
+seed_*.js
