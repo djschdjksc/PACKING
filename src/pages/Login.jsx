@@ -14,12 +14,15 @@ const Login = () => {
         e.preventDefault();
         setError('');
 
+        console.log('Sending login request:', { username: id, password });
         const result = await login(id, password);
+        console.log('Login result:', result);
         if (result.success) {
             // Redirect based on role is handled in App.jsx or here?
             // For now, let's redirect to dashboard, which will route correctly.
             navigate('/');
         } else {
+            console.error('Login failed:', result.message);
             setError(result.message);
         }
     };

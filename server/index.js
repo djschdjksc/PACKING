@@ -54,6 +54,11 @@ const Group = require('./models/Group');
 
 // --- API ROUTES ---
 
+// Root
+app.get('/', (req, res) => {
+    res.send('Packing Data Project API is Running');
+});
+
 // Groups
 app.get('/api/groups', async (req, res) => {
     try {

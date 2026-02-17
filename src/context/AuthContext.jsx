@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
             }
         } catch (error) {
             console.error('Login Error:', error);
-            return { success: false, message: 'Server Connection Error' };
+            return { success: false, message: 'Server Connection Error: ' + error.message };
         }
     };
 
