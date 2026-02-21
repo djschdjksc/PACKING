@@ -7,9 +7,9 @@ const isCapacitor = window.Capacitor !== undefined;
 const isElectron = window.navigator.userAgent.toLowerCase().includes(' electron/') || (window.process && window.process.versions && window.process.versions.electron);
 
 const API_BASE_URL = isCapacitor
-    ? 'http://172.27.129.102:5000' // Your detected PC IP. Use this for Physical Android Devices.
+    ? 'https://packing-server.onrender.com' // Cloud API for Android
     : isElectron
-        ? 'http://localhost:5000'
-        : `http://${window.location.hostname || 'localhost'}:5000`; // Dynamically use localhost or Network IP
+        ? 'http://localhost:5000' // Local for Electron (Optional, can also use cloud)
+        : 'https://packing-server.onrender.com'; // Cloud API for Web Browser
 
 export default API_BASE_URL;
