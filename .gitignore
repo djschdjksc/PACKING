@@ -1,11 +1,27 @@
 # secrets
 .env
+*.env.local
 
 # dependencies
 node_modules/
 
-# build output
+# build output (React/Vite)
 dist/
+build/
+
+# Electron / EXE builds
+release-builds/
+release-builds-new/
+win-build/
+win-build-new/
+bill-app-exe/
+*.exe
+
+# logs
+*.log
+*_log.txt
+build_log*.txt
+pack_log.txt
 
 # android build
 android/
@@ -13,11 +29,13 @@ android/
 # ide
 .idea/
 .run/
+.vscode/
+.DS_Store
 
-# git
-.git
-
-# debug / test
+# debug / test scripts
 debug_*.js
 test-*.js
 seed_*.js
+test*.js
+reproduce_*.js
+*.test.js

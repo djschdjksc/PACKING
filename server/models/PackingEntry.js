@@ -19,7 +19,9 @@ const PackingEntrySchema = new mongoose.Schema({
     notApprovedQty: { type: Number, default: 0 },
     auditorRemarks: { type: String },
     auditedBy: { type: String },
-    auditedAt: { type: Date }
+    auditedAt: { type: Date },
+    isPrintRequested: { type: Boolean, default: false },
+    isPrintConfirmed: { type: Boolean, default: false }
 
 }, { timestamps: true });
 

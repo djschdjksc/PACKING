@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, Menu, User } from 'lucide-react';
 
-const Layout = ({ children, title }) => {
+const Layout = ({ children, title, actions }) => {
     const { user, logout } = useAuth();
 
     return (
@@ -18,6 +18,7 @@ const Layout = ({ children, title }) => {
                     </div>
 
                     <div className="flex items-center space-x-4">
+                        {actions && <div>{actions}</div>}
                         <div className="hidden md:flex items-center space-x-2">
                             <User className="h-5 w-5 opacity-75" />
                             <span className="text-sm font-medium">{user?.name} ({user?.role})</span>

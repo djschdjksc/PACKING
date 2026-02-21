@@ -1,11 +1,13 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 
 import OwnerDashboard from './pages/OwnerDashboard';
 import AuditorDashboard from './pages/AuditorDashboard';
 import PackerDashboard from './pages/PackerDashboard';
+import BillerDashboard from './pages/BillerDashboard';
+// import BillerDashboard from './pages/MinimalBillerDashboard';
 import ItemMaster from './pages/ItemMaster';
 import UserManagement from './pages/UserManagement';
 
@@ -31,6 +33,7 @@ const RoleBasedRedirect = () => {
     case 'owner': return <OwnerDashboard />;
     case 'auditor': return <AuditorDashboard />;
     case 'packer': return <PackerDashboard />;
+    case 'biller': return <BillerDashboard />;
     default: return <div>Unknown Role</div>;
   }
 };
@@ -67,6 +70,11 @@ function App() {
           <Route path="/packer/*" element={
             <ProtectedRoute allowedRoles={['packer']}>
               <PackerDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/biller/*" element={
+            <ProtectedRoute allowedRoles={['biller']}>
+              <BillerDashboard />
             </ProtectedRoute>
           } />
 

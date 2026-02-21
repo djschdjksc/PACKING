@@ -12,14 +12,15 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // MongoDB Connection
-// MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI;
 
-mongoose.connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000 // Fail fast if cannot connect
-})
-    .then(async () => {
+const connectDB = async () => {
+    try {
+        await mongoose.connect(MONGO_URI, {
+            serverSelectionTimeoutMS: 5000 // Fail fast if cannot connect
+        });
         console.log('MongoDB Connected Successfully');
+
         // Drop unique index on barcode if exists (to allow duplicates)
         try {
             const collection = mongoose.connection.collection('items');
@@ -33,17 +34,21 @@ mongoose.connect(MONGO_URI, {
         } catch (e) {
             console.log('Index drop check skipped/failed (non-critical):', e.message);
         }
-    })
-    .catch(err => {
+
+    } catch (err) {
         console.error('MongoDB Connection Error:', err.message);
         console.error('Possible causes:');
         console.error('1. IP Address not whitelisted in MongoDB Atlas (Network Access)');
         console.error('2. Invalid connection string');
         console.error('3. Firewall blocking connection');
-    });
+        // Do NOT exit process, let the server run
+    }
+};
+
+connectDB();
 
 mongoose.connection.on('error', err => {
-    console.error('MongoDB Runtime Connection Error:', err);
+    console.error('MongoDB Runtime Connection Error:', err.message);
 });
 
 // Models
@@ -51,6 +56,8 @@ const Item = require('./models/Item');
 const User = require('./models/User');
 const PackingEntry = require('./models/PackingEntry');
 const Group = require('./models/Group');
+const SubGroup = require('./models/SubGroup');
+const Party = require('./models/Party');
 
 // --- API ROUTES ---
 
@@ -82,7 +89,30 @@ app.delete('/api/groups/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// User ManagementAUTH & USERS ===
+// SubGroups
+app.get('/api/subgroups', async (req, res) => {
+    try {
+        const subGroups = await SubGroup.find().sort({ createdAt: -1 });
+        res.json(subGroups);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/subgroups', async (req, res) => {
+    try {
+        const newSubGroup = new SubGroup(req.body);
+        await newSubGroup.save();
+        res.status(201).json(newSubGroup);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/subgroups/:id', async (req, res) => {
+    try {
+        await SubGroup.findByIdAndDelete(req.params.id);
+        res.json({ message: 'SubGroup deleted' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// AUTH & USERS ===
 
 // 1. Login
 app.post('/api/login', async (req, res) => {
@@ -242,10 +272,12 @@ app.post('/api/packing/bulk', async (req, res) => {
 // 2. Get Packing Data (with filters)
 app.get('/api/packing', async (req, res) => {
     try {
-        const { submittedBy, status, startDate, endDate } = req.query;
+        const { submittedBy, status, startDate, endDate, isPrintRequested, isPrintConfirmed } = req.query;
         let query = {};
         if (submittedBy) query.submittedBy = submittedBy;
         if (status) query.status = status;
+        if (isPrintRequested !== undefined) query.isPrintRequested = isPrintRequested === 'true';
+        if (isPrintConfirmed !== undefined) query.isPrintConfirmed = isPrintConfirmed === 'true';
 
         // Date Range Filter
         // Date Range Filter
@@ -278,6 +310,73 @@ app.get('/api/packing', async (req, res) => {
 
         const entries = await PackingEntry.find(query).sort({ createdAt: -1 });
         res.json(entries);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// 2c. Toggle Print Request (Temporary Selection)
+app.patch('/api/packing/:id/print', async (req, res) => {
+    try {
+        const entry = await PackingEntry.findById(req.params.id);
+        if (!entry) return res.status(404).json({ message: 'Entry not found' });
+
+        // If either is true, untick both
+        if (entry.isPrintRequested || entry.isPrintConfirmed) {
+            entry.isPrintRequested = false;
+            entry.isPrintConfirmed = false;
+        } else {
+            // Otherwise, start a request
+            entry.isPrintRequested = true;
+        }
+
+        await entry.save();
+        res.json(entry);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// 2d. Bulk Print Confirm (Move from Selection to Confirmation)
+app.patch('/api/packing/bulk-print-confirm', async (req, res) => {
+    try {
+        const { submittedBy } = req.body;
+        if (!submittedBy) return res.status(400).json({ message: 'User identifier required' });
+
+        const result = await PackingEntry.updateMany(
+            { submittedBy, isPrintRequested: true },
+            { $set: { isPrintRequested: false, isPrintConfirmed: true } }
+        );
+        res.json({ message: "Prints confirmed", modifiedCount: result.modifiedCount });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// 2e. Bulk Print Clear (Untick All My Prints)
+app.patch('/api/packing/bulk-print-clear', async (req, res) => {
+    try {
+        const { submittedBy } = req.body;
+        if (!submittedBy) return res.status(400).json({ message: 'User identifier required' });
+
+        const result = await PackingEntry.updateMany(
+            { submittedBy, isPrintRequested: true },
+            { $set: { isPrintRequested: false, isPrintConfirmed: false } }
+        );
+        res.json({ message: "Prints cleared", modifiedCount: result.modifiedCount });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// 2f. Bulk Print Done (Owner clears confirmed queue)
+app.patch('/api/packing/bulk-print-done', async (req, res) => {
+    try {
+        const result = await PackingEntry.updateMany(
+            { isPrintConfirmed: true },
+            { $set: { isPrintRequested: false, isPrintConfirmed: false } }
+        );
+        res.json({ message: "Print queue cleared", modifiedCount: result.modifiedCount });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -331,11 +430,18 @@ app.delete('/api/packing/:id', async (req, res) => {
 // === ITEM MASTER ===
 
 // 1. Get All Items
+// 1. Get All Items (Optimized for Biller)
 app.get('/api/items', async (req, res) => {
     try {
-        const items = await Item.find().sort({ createdAt: -1 });
+        // Optimized: Select only needed fields, lean() for performance, no limit
+        const items = await Item.find({}, 'itemName short rate group subGroup unit')
+            .sort({ itemName: 1 })
+            .lean();
+
+        console.log(`Fetched ${items.length} items.`);
         res.json(items);
     } catch (err) {
+        console.error("Error fetching items:", err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -459,7 +565,135 @@ app.delete('/api/items/group/:groupName', async (req, res) => {
 });
 
 
+
+// --- Party Routes ---
+app.get('/api/parties', async (req, res) => {
+    try {
+        const parties = await Party.find().sort({ name: 1 });
+        res.json(parties);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/parties', async (req, res) => {
+    try {
+        const newParty = new Party(req.body);
+        await newParty.save();
+        res.status(201).json(newParty);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/parties/bulk', async (req, res) => {
+    try {
+        const parties = req.body; // Expecting array of {name, station, mobile}
+        if (!Array.isArray(parties)) return res.status(400).json({ error: 'Invalid data format' });
+
+        // Remove duplicates if needed or just insert
+        const result = await Party.insertMany(parties);
+        res.status(201).json(result);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+
+
+app.delete('/api/parties/:id', async (req, res) => {
+    try {
+        await Party.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Party deleted' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Bill Routes ---
+const Bill = require('./models/Bill');
+
+// 1. Get All Bills (Summary)
+app.get('/api/bills', async (req, res) => {
+    try {
+        const bills = await Bill.find()
+            .select('billNo date customerDetails.name grandTotal') // Select only summary fields for list
+            .sort({ date: -1, createdAt: -1 });
+        res.json(bills);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 1b. Export All Bill Items (Flattened)
+app.get('/api/bills/export', async (req, res) => {
+    try {
+        const bills = await Bill.find().sort({ date: -1 });
+        const flattenedItems = [];
+
+        bills.forEach(bill => {
+            (bill.items || []).forEach(item => {
+                flattenedItems.push({
+                    billNo: bill.billNo || 'Unknown',
+                    date: bill.date,
+                    customer: bill.customerDetails?.name || 'Unknown',
+                    station: bill.customerDetails?.station || '',
+                    vehicleNo: bill.customerDetails?.vehicleNo || '',
+                    itemId: item.itemId,
+                    itemName: item.itemName,
+                    qty: item.qty,
+                    rate: item.rate,
+                    amount: item.amount,
+                    group: item.group || '',
+                    subGroup: item.subGroup || '',
+                    uCap: item.uCap || '',
+                    lCap: item.lCap || '',
+                    sr: item.sr
+                });
+            });
+        });
+
+        res.json(flattenedItems);
+    } catch (err) {
+        console.error("Export Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 1c. Search Bill by BillNo
+app.get('/api/bills/search/:billNo', async (req, res) => {
+    try {
+        const bill = await Bill.findOne({ billNo: req.params.billNo }).sort({ createdAt: -1 });
+        if (!bill) return res.status(404).json({ error: 'Bill not found' });
+        res.json(bill);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Get Single Bill (Details)
+app.get('/api/bills/:id', async (req, res) => {
+    try {
+        const bill = await Bill.findById(req.params.id);
+        if (!bill) return res.status(404).json({ error: 'Bill not found' });
+        res.json(bill);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 3. Save New Bill
+app.post('/api/bills', async (req, res) => {
+    try {
+        const newBill = new Bill(req.body);
+        await newBill.save();
+        res.status(201).json(newBill);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// 4. Update Bill
+app.put('/api/bills/:id', async (req, res) => {
+    try {
+        const updatedBill = await Bill.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.json(updatedBill);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 5. Delete Bill
+app.delete('/api/bills/:id', async (req, res) => {
+    try {
+        await Bill.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Bill deleted' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Start Server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT} - Bulk Import Enabled`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT} - Accessible on LAN`);
 });
